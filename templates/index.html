@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RideFare — Live Fare Prediction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <header class="app-bar">
+    <div class="app-bar-left">
+      <div class="app-icon">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 13l1.5-5A2 2 0 0 1 6.4 6.5h11.2a2 2 0 0 1 1.9 1.5L21 13v6a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H6v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="7" cy="16" r="1.4" fill="currentColor"/><circle cx="17" cy="16" r="1.4" fill="currentColor"/></svg>
+      </div>
+      <div class="app-titles">
+        <div class="app-name">RideFare</div>
+        <div class="app-tag">live fare prediction · random forest</div>
+      </div>
+    </div>
+    <div class="live-pill"><span class="live-dot"></span> Model online</div>
+  </header>
+
+  {% if not model_loaded %}
+  <div class="model-warning">
+    <strong>model.pkl not found.</strong> Drop your trained model next to app.py
+    (<code>joblib.dump(rf_model, 'model.pkl')</code>) to get live predictions.
+  </div>
+  {% endif %}
+
+  <!-- ROUTE STRIP -->
+  <div class="route-strip">
+    <svg viewBox="0 0 700 70" class="route-svg" preserveAspectRatio="none">
+      <line x1="45" y1="35" x2="655" y2="35" class="route-line"/>
+      <g id="route-car" class="route-car">
+        <circle r="14" class="car-halo"/>
+        <path d="M-9 3 L-6 -3 A2 2 0 0 1 -4 -4 H4 A2 2 0 0 1 6 -3 L9 3 V6 H-9 Z" class="car-body"/>
+        <circle cx="-4" cy="6" r="1.8" class="car-wheel"/>
+        <circle cx="4" cy="6" r="1.8" class="car-wheel"/>
+      </g>
+    </svg>
+    <div class="route-points">
+      <div class="route-point">
+        <span class="pin pin-start"></span> Pickup
+      </div>
+      <div class="route-distance" id="route-distance-label">6 km trip</div>
+      <div class="route-point">
+        Drop <span class="pin pin-end"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+
+    <!-- LEFT: TRIP INPUT FORM -->
+    <form id="pricing-form" class="trip-form">
+
+      <div class="card">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" class="card-icon"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="12" cy="9.5" r="2.3" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+          Trip Details
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="distance_km">Distance (km)</label>
+            <input type="number" id="distance_km" step="any" value="6" required>
+          </div>
+          <div class="field">
+            <label for="demand">Demand (active riders)</label>
+            <input type="number" id="demand" step="any" value="120" required>
+          </div>
+          <div class="field">
+            <label for="historical_sales">Historical Sales</label>
+            <input type="number" id="historical_sales" step="any" value="300" required>
+          </div>
+          <div class="field">
+            <label for="stock">Driver Stock</label>
+            <input type="number" id="stock" step="any" value="80" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" class="card-icon"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Market Conditions
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="competitor_price">Competitor Price</label>
+            <input type="number" id="competitor_price" step="any" value="450" required>
+          </div>
+          <div class="field">
+            <label for="customer_rating">Rider Rating</label>
+            <input type="number" id="customer_rating" step="0.1" min="1" max="5" value="4.2" required>
+          </div>
+          <div class="field">
+            <label for="discount">Discount (%)</label>
+            <input type="number" id="discount" step="any" value="5" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <svg viewBox="0 0 24 24" class="card-icon"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Timing & Surge
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="season">Season</label>
+            <select id="season" required>
+              <option value="Normal">Normal</option>
+              <option value="Festival">Festival</option>
+              <option value="Monsoon">Monsoon</option>
+              <option value="Wedding">Wedding</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="day_time">Time of Day</label>
+            <select id="day_time" required>
+              <option value="Morning Peak">Morning Peak</option>
+              <option value="Midday">Midday</option>
+              <option value="Night">Night</option>
+              <option value="Late Night">Late Night</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field surge-field">
+          <label for="surge_multiplier">
+            Surge Multiplier <span id="surge-readout" class="surge-readout">1.20×</span>
+          </label>
+          <input type="range" id="surge_multiplier" min="1" max="3" step="0.05" value="1.2">
+        </div>
+      </div>
+
+      <button type="submit" class="submit-btn">
+        <span class="btn-label">Get Fare Estimate</span>
+        <span class="btn-arrow">→</span>
+      </button>
+    </form>
+
+    <!-- RIGHT: FARE CONFIRMATION CARD -->
+    <div class="fare-card">
+
+      <div class="fare-card-top">
+        <div class="car-badge">
+          <svg viewBox="0 0 24 24"><path d="M3 13l1.5-5A2 2 0 0 1 6.4 6.5h11.2a2 2 0 0 1 1.9 1.5L21 13v6a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H6v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><circle cx="7" cy="16" r="1.3" fill="currentColor"/><circle cx="17" cy="16" r="1.3" fill="currentColor"/></svg>
+        </div>
+        <div class="surge-badge" id="surge-badge">1.20× surge</div>
+      </div>
+
+      <div class="fare-amount-wrap">
+        <div class="fare-label">Estimated Fare</div>
+        <div class="fare-amount" id="price-value">—</div>
+        <div class="fare-status" id="price-status">Fill in trip details</div>
+      </div>
+
+      <div class="mascot">
+        <svg viewBox="0 0 260 170" class="mascot-svg">
+          <g class="bubble">
+            <rect x="72" y="8" width="132" height="42" rx="14" fill="#1A1A1A" stroke="#2A2A2A"/>
+            <path d="M128 50 l9 13 l9 -13 Z" fill="#1A1A1A" stroke="#2A2A2A"/>
+            <text x="138" y="34" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="15" font-weight="700" fill="#FFFFFF">Hey, ready?</text>
+          </g>
+
+          <g class="car-idle">
+            <ellipse cx="130" cy="150" rx="72" ry="7" fill="black" opacity="0.4"/>
+            <path d="M42 122 L52 97 A9 9 0 0 1 61 91 H101 L116 76 H164 L179 91 H199 A9 9 0 0 1 208 97 L218 122 Z" fill="#06C167"/>
+            <path d="M113 91 L123 79 H159 L171 91 Z" fill="#0A0A0A"/>
+            <circle cx="82" cy="124" r="13" fill="#111"/>
+            <circle cx="82" cy="124" r="5.5" fill="#444"/>
+            <circle cx="178" cy="124" r="13" fill="#111"/>
+            <circle cx="178" cy="124" r="5.5" fill="#444"/>
+
+            <g class="driver-wave">
+              <circle cx="140" cy="70" r="9" fill="#F1C27D"/>
+              <path d="M140 80 q10 4 17 -4" stroke="#F1C27D" stroke-width="5" fill="none" stroke-linecap="round" class="arm"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+
+      <div class="fare-chips">
+        <div class="chip" id="chip-distance">6 km</div>
+        <div class="chip" id="chip-season">Normal</div>
+        <div class="chip" id="chip-time">Morning Peak</div>
+      </div>
+
+      <div class="fare-divider"></div>
+
+      <div class="surge-scale">
+        <div class="surge-scale-track">
+          <div class="surge-scale-fill" id="surge-scale-fill"></div>
+        </div>
+        <div class="surge-scale-labels">
+          <span>Calm</span><span>Elevated</span><span>Peak</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
